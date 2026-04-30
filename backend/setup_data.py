@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import tempfile
 import urllib.request
+import warnings
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,6 +36,31 @@ def _write(df: pd.DataFrame, output_dir: Path, name: str) -> None:
     df.to_csv(output_dir / name, index=False)
 
 
+def _make_staging_dir(target: Path) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=f".{target.name}.tmp-", dir=target.parent))
+
+
+def _replace_dir(staging_dir: Path, output_dir: Path) -> None:
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    staging_dir.replace(output_dir)
+
+
+def _validate_required_files(raw_dir: Path) -> None:
+    for name in ("stops.txt", "trips.txt", "stop_times.txt"):
+        path = raw_dir / name
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
+
+def _reject_overlapping_dirs(raw_dir: Path, output_dir: Path) -> None:
+    raw_path = raw_dir.resolve()
+    output_path = output_dir.resolve()
+    if raw_path == output_path or raw_path in output_path.parents or output_path in raw_path.parents:
+        raise ValueError("raw_dir and output_dir must be separate, non-overlapping directories")
+
+
 def discover_download_url(package_url: str = DEFAULT_CKAN_PACKAGE_URL) -> str:
     try:
         with urllib.request.urlopen(package_url, timeout=30) as response:
@@ -45,31 +72,58 @@ def discover_download_url(package_url: str = DEFAULT_CKAN_PACKAGE_URL) -> str:
         ]
         if zip_resources:
             return str(zip_resources[0]["url"])
-    except Exception:
+    except Exception as error:
+        warnings.warn(
+            f"CKAN GTFS discovery failed; falling back to {GEOPS_FALLBACK_URL}: {error}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return GEOPS_FALLBACK_URL
+    warnings.warn(
+        f"CKAN GTFS discovery found no zip resource; falling back to {GEOPS_FALLBACK_URL}",
+        RuntimeWarning,
+        stacklevel=2,
+    )
     return GEOPS_FALLBACK_URL
 
 
 def download_gtfs(destination: Path, source_url: str | None = None) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     url = source_url or discover_download_url()
-    urllib.request.urlretrieve(url, destination)
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        dir=destination.parent,
+        prefix=f".{destination.name}.tmp-",
+        suffix=".zip",
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
+    try:
+        urllib.request.urlretrieve(url, temp_path)
+        if not zipfile.is_zipfile(temp_path):
+            raise zipfile.BadZipFile(f"Downloaded file is not a zip archive: {url}")
+        temp_path.replace(destination)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
     return destination
 
 
 def extract_gtfs(zip_path: Path, output_dir: Path) -> Path:
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path) as archive:
-        archive.extractall(output_dir)
+    staging_dir = _make_staging_dir(output_dir)
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(staging_dir)
+        _replace_dir(staging_dir, output_dir)
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
     return output_dir
 
 
 def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS) -> Path:
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    _reject_overlapping_dirs(raw_dir, output_dir)
+    _validate_required_files(raw_dir)
+    staging_dir = _make_staging_dir(output_dir)
 
     stops = _read(raw_dir / "stops.txt")
     stops["stop_lat_float"] = stops.stop_lat.astype(float)
@@ -112,19 +166,25 @@ def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS)
             & transfers.to_stop_id.isin(kept_stop_ids)
         ]
 
-    _write(kept_stops, output_dir, "stops.txt")
-    _write(kept_stop_times, output_dir, "stop_times.txt")
-    _write(kept_trips, output_dir, "trips.txt")
-    if not kept_routes.empty:
-        _write(kept_routes, output_dir, "routes.txt")
-    if not agency.empty:
-        _write(agency, output_dir, "agency.txt")
-    if not calendar.empty:
-        _write(calendar, output_dir, "calendar.txt")
-    if not calendar_dates.empty:
-        _write(calendar_dates, output_dir, "calendar_dates.txt")
-    if not transfers.empty:
-        _write(transfers, output_dir, "transfers.txt")
+    try:
+        _write(kept_stops, staging_dir, "stops.txt")
+        _write(kept_stop_times, staging_dir, "stop_times.txt")
+        _write(kept_trips, staging_dir, "trips.txt")
+        if not kept_routes.empty:
+            _write(kept_routes, staging_dir, "routes.txt")
+        if not agency.empty:
+            _write(agency, staging_dir, "agency.txt")
+        if not calendar.empty:
+            _write(calendar, staging_dir, "calendar.txt")
+        if not calendar_dates.empty:
+            _write(calendar_dates, staging_dir, "calendar_dates.txt")
+        if not transfers.empty:
+            _write(transfers, staging_dir, "transfers.txt")
+        _validate_required_files(staging_dir)
+        _replace_dir(staging_dir, output_dir)
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
     return output_dir
 
 
