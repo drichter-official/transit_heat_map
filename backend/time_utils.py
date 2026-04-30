@@ -20,7 +20,10 @@ def seconds_since_midnight(value: datetime) -> int:
 
 
 def parse_gtfs_date(value: str) -> date:
-    return datetime.strptime(value.strip(), "%Y%m%d").date()
+    stripped = value.strip()
+    if len(stripped) != 8 or not stripped.isdigit():
+        raise ValueError(f"Invalid GTFS date: {value!r}")
+    return datetime.strptime(stripped, "%Y%m%d").date()
 
 
 def _calendar_matches_day(calendar: ServiceCalendar, service_date: date) -> bool:

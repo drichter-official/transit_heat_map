@@ -24,6 +24,12 @@ def test_parse_gtfs_date_reads_compact_date():
     assert parse_gtfs_date("20260430") == date(2026, 4, 30)
 
 
+def test_parse_gtfs_date_rejects_malformed_compact_dates():
+    for value in ("202641", "2026041", "2026AB30"):
+        with pytest.raises(ValueError):
+            parse_gtfs_date(value)
+
+
 def test_active_service_ids_applies_weekday_and_exceptions():
     weekday = ServiceCalendar(
         service_id="weekday",
