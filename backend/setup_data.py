@@ -125,48 +125,48 @@ def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS)
     _validate_required_files(raw_dir)
     staging_dir = _make_staging_dir(output_dir)
 
-    stops = _read(raw_dir / "stops.txt")
-    stops["stop_lat_float"] = stops.stop_lat.astype(float)
-    stops["stop_lon_float"] = stops.stop_lon.astype(float)
-    kept_stops = stops[
-        stops.stop_lat_float.between(bounds.min_lat, bounds.max_lat)
-        & stops.stop_lon_float.between(bounds.min_lon, bounds.max_lon)
-    ].drop(columns=["stop_lat_float", "stop_lon_float"])
-    kept_stop_ids = set(kept_stops.stop_id)
-
-    stop_times = _read(raw_dir / "stop_times.txt")
-    kept_stop_times = stop_times[stop_times.stop_id.isin(kept_stop_ids)]
-    kept_trip_ids = set(kept_stop_times.trip_id)
-
-    trips = _read(raw_dir / "trips.txt")
-    kept_trips = trips[trips.trip_id.isin(kept_trip_ids)]
-    kept_route_ids = set(kept_trips.route_id)
-    kept_service_ids = set(kept_trips.service_id)
-
-    routes = _read(raw_dir / "routes.txt") if (raw_dir / "routes.txt").exists() else pd.DataFrame()
-    kept_routes = routes[routes.route_id.isin(kept_route_ids)] if not routes.empty else routes
-    kept_agency_ids = set(kept_routes.agency_id) if "agency_id" in kept_routes.columns else set()
-
-    agency = _read(raw_dir / "agency.txt") if (raw_dir / "agency.txt").exists() else pd.DataFrame()
-    if not agency.empty and kept_agency_ids and "agency_id" in agency.columns:
-        agency = agency[agency.agency_id.isin(kept_agency_ids)]
-
-    calendar = _read(raw_dir / "calendar.txt") if (raw_dir / "calendar.txt").exists() else pd.DataFrame()
-    if not calendar.empty:
-        calendar = calendar[calendar.service_id.isin(kept_service_ids)]
-
-    calendar_dates = _read(raw_dir / "calendar_dates.txt") if (raw_dir / "calendar_dates.txt").exists() else pd.DataFrame()
-    if not calendar_dates.empty:
-        calendar_dates = calendar_dates[calendar_dates.service_id.isin(kept_service_ids)]
-
-    transfers = _read(raw_dir / "transfers.txt") if (raw_dir / "transfers.txt").exists() else pd.DataFrame()
-    if not transfers.empty:
-        transfers = transfers[
-            transfers.from_stop_id.isin(kept_stop_ids)
-            & transfers.to_stop_id.isin(kept_stop_ids)
-        ]
-
     try:
+        stops = _read(raw_dir / "stops.txt")
+        stops["stop_lat_float"] = stops.stop_lat.astype(float)
+        stops["stop_lon_float"] = stops.stop_lon.astype(float)
+        kept_stops = stops[
+            stops.stop_lat_float.between(bounds.min_lat, bounds.max_lat)
+            & stops.stop_lon_float.between(bounds.min_lon, bounds.max_lon)
+        ].drop(columns=["stop_lat_float", "stop_lon_float"])
+        kept_stop_ids = set(kept_stops.stop_id)
+
+        stop_times = _read(raw_dir / "stop_times.txt")
+        kept_stop_times = stop_times[stop_times.stop_id.isin(kept_stop_ids)]
+        kept_trip_ids = set(kept_stop_times.trip_id)
+
+        trips = _read(raw_dir / "trips.txt")
+        kept_trips = trips[trips.trip_id.isin(kept_trip_ids)]
+        kept_route_ids = set(kept_trips.route_id)
+        kept_service_ids = set(kept_trips.service_id)
+
+        routes = _read(raw_dir / "routes.txt") if (raw_dir / "routes.txt").exists() else pd.DataFrame()
+        kept_routes = routes[routes.route_id.isin(kept_route_ids)] if not routes.empty else routes
+        kept_agency_ids = set(kept_routes.agency_id) if "agency_id" in kept_routes.columns else set()
+
+        agency = _read(raw_dir / "agency.txt") if (raw_dir / "agency.txt").exists() else pd.DataFrame()
+        if not agency.empty and kept_agency_ids and "agency_id" in agency.columns:
+            agency = agency[agency.agency_id.isin(kept_agency_ids)]
+
+        calendar = _read(raw_dir / "calendar.txt") if (raw_dir / "calendar.txt").exists() else pd.DataFrame()
+        if not calendar.empty:
+            calendar = calendar[calendar.service_id.isin(kept_service_ids)]
+
+        calendar_dates = _read(raw_dir / "calendar_dates.txt") if (raw_dir / "calendar_dates.txt").exists() else pd.DataFrame()
+        if not calendar_dates.empty:
+            calendar_dates = calendar_dates[calendar_dates.service_id.isin(kept_service_ids)]
+
+        transfers = _read(raw_dir / "transfers.txt") if (raw_dir / "transfers.txt").exists() else pd.DataFrame()
+        if not transfers.empty:
+            transfers = transfers[
+                transfers.from_stop_id.isin(kept_stop_ids)
+                & transfers.to_stop_id.isin(kept_stop_ids)
+            ]
+
         _write(kept_stops, staging_dir, "stops.txt")
         _write(kept_stop_times, staging_dir, "stop_times.txt")
         _write(kept_trips, staging_dir, "trips.txt")

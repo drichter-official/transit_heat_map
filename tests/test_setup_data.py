@@ -114,6 +114,40 @@ def test_filter_gtfs_preserves_existing_output_when_raw_data_is_malformed(tmp_pa
     assert existing.read_text(encoding="utf-8") == "existing,data\n1,2\n"
 
 
+def test_filter_gtfs_cleans_staging_when_raw_data_parse_fails(tmp_path: Path):
+    raw = tmp_path / "raw"
+    out = tmp_path / "filtered"
+    raw.mkdir()
+    out.mkdir()
+    existing = out / "stops.txt"
+    existing.write_text("existing,data\n1,2\n", encoding="utf-8")
+
+    write_table(
+        raw,
+        "stops.txt",
+        ["stop_id", "stop_name", "stop_lat", "stop_lon"],
+        [["A", "Inside A", "not-a-latitude", 8.54]],
+    )
+    write_table(
+        raw,
+        "trips.txt",
+        ["route_id", "service_id", "trip_id"],
+        [["R1", "WKD", "T1"]],
+    )
+    write_table(
+        raw,
+        "stop_times.txt",
+        ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"],
+        [["T1", "08:00:00", "08:00:00", "A", 1]],
+    )
+
+    with pytest.raises(ValueError):
+        filter_gtfs(raw, out, Bounds(min_lat=47.0, max_lat=48.0, min_lon=8.0, max_lon=9.0))
+
+    assert existing.read_text(encoding="utf-8") == "existing,data\n1,2\n"
+    assert not list(tmp_path.glob(".filtered.tmp-*"))
+
+
 def test_filter_gtfs_rejects_raw_output_collision(tmp_path: Path):
     raw = tmp_path / "raw"
     raw.mkdir()
