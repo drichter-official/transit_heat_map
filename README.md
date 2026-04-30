@@ -1,6 +1,6 @@
 # Transit Heatmap
 
-Local-first public transport reachability heatmap for the ZVV/Zurich area.
+Local-first public transport reachability heatmap for Switzerland.
 
 ## Setup
 
@@ -16,7 +16,13 @@ pip install -r requirements.txt
 python -m backend.setup_data
 ```
 
-This downloads Swiss GTFS data, extracts it under `backend/data/raw/`, filters it to the Zurich-area MVP scope, and writes the app feed to `backend/data/filtered/`.
+This downloads Swiss GTFS data, extracts it under `backend/data/raw/`, filters it to the Switzerland scope, and writes the app feed to `backend/data/filtered/`.
+
+To prepare the smaller Zurich development feed instead, run:
+
+```powershell
+python -m backend.setup_data --region zurich
+```
 
 ## Run Tests
 

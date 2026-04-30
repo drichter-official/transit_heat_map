@@ -96,6 +96,82 @@ def test_filter_gtfs_keeps_consistent_zurich_subset(tmp_path: Path):
     assert set(transfers.to_stop_id) == {"B"}
 
 
+def test_filter_gtfs_defaults_to_switzerland_scope(tmp_path: Path):
+    raw = tmp_path / "raw"
+    out = tmp_path / "filtered"
+    raw.mkdir()
+
+    write_table(
+        raw,
+        "stops.txt",
+        ["stop_id", "stop_name", "stop_lat", "stop_lon"],
+        [
+            ["ZRH", "Zurich HB", 47.378, 8.540],
+            ["GVA", "Geneve", 46.210, 6.142],
+            ["MIL", "Milano Centrale", 45.487, 9.204],
+        ],
+    )
+    write_table(
+        raw,
+        "trips.txt",
+        ["route_id", "service_id", "trip_id"],
+        [["R1", "WKD", "T1"]],
+    )
+    write_table(
+        raw,
+        "stop_times.txt",
+        ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"],
+        [
+            ["T1", "08:00:00", "08:00:00", "ZRH", 1],
+            ["T1", "10:50:00", "10:52:00", "GVA", 2],
+            ["T1", "14:00:00", "14:00:00", "MIL", 3],
+        ],
+    )
+
+    filter_gtfs(raw, out)
+
+    stops = pd.read_csv(out / "stops.txt")
+    stop_times = pd.read_csv(out / "stop_times.txt")
+
+    assert set(stops.stop_id) == {"ZRH", "GVA"}
+    assert set(stop_times.stop_id) == {"ZRH", "GVA"}
+
+
+def test_filter_gtfs_writes_minimal_runtime_columns(tmp_path: Path):
+    raw = tmp_path / "raw"
+    out = tmp_path / "filtered"
+    raw.mkdir()
+
+    write_table(
+        raw,
+        "stops.txt",
+        ["stop_id", "stop_name", "stop_lat", "stop_lon", "unused_stop_column"],
+        [["ZRH", "Zurich HB", 47.378, 8.540, "drop-me"]],
+    )
+    write_table(
+        raw,
+        "trips.txt",
+        ["route_id", "service_id", "trip_id", "unused_trip_column"],
+        [["R1", "WKD", "T1", "drop-me"]],
+    )
+    write_table(
+        raw,
+        "stop_times.txt",
+        ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence", "unused_time_column"],
+        [["T1", "08:00:00", "08:00:00", "ZRH", 1, "drop-me"]],
+    )
+
+    filter_gtfs(raw, out)
+
+    stops = pd.read_csv(out / "stops.txt")
+    trips = pd.read_csv(out / "trips.txt")
+    stop_times = pd.read_csv(out / "stop_times.txt")
+
+    assert list(stops.columns) == ["stop_id", "stop_name", "stop_lat", "stop_lon"]
+    assert list(trips.columns) == ["route_id", "service_id", "trip_id"]
+    assert list(stop_times.columns) == ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]
+
+
 def test_filter_gtfs_preserves_existing_output_when_raw_data_is_malformed(tmp_path: Path):
     raw = tmp_path / "raw"
     out = tmp_path / "filtered"

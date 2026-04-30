@@ -24,7 +24,15 @@ class Bounds:
     max_lon: float
 
 
+SWITZERLAND_BOUNDS = Bounds(min_lat=45.75, max_lat=47.95, min_lon=5.75, max_lon=10.70)
 ZURICH_BOUNDS = Bounds(min_lat=47.05, max_lat=47.75, min_lon=8.25, max_lon=8.95)
+REGION_BOUNDS = {
+    "switzerland": SWITZERLAND_BOUNDS,
+    "zurich": ZURICH_BOUNDS,
+}
+STOP_COLUMNS = ["stop_id", "stop_name", "stop_lat", "stop_lon"]
+TRIP_COLUMNS = ["route_id", "service_id", "trip_id"]
+STOP_TIME_COLUMNS = ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]
 
 
 def _read(path: Path) -> pd.DataFrame:
@@ -34,6 +42,10 @@ def _read(path: Path) -> pd.DataFrame:
 def _write(df: pd.DataFrame, output_dir: Path, name: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_dir / name, index=False)
+
+
+def _keep_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    return df[[column for column in columns if column in df.columns]]
 
 
 def _make_staging_dir(target: Path) -> Path:
@@ -139,7 +151,7 @@ def extract_gtfs(zip_path: Path, output_dir: Path) -> Path:
     return output_dir
 
 
-def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS) -> Path:
+def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = SWITZERLAND_BOUNDS) -> Path:
     _reject_overlapping_dirs(raw_dir, output_dir)
     _validate_required_files(raw_dir)
     staging_dir = _make_staging_dir(output_dir)
@@ -152,6 +164,7 @@ def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS)
             stops.stop_lat_float.between(bounds.min_lat, bounds.max_lat)
             & stops.stop_lon_float.between(bounds.min_lon, bounds.max_lon)
         ].drop(columns=["stop_lat_float", "stop_lon_float"])
+        kept_stops = _keep_columns(kept_stops, STOP_COLUMNS)
         kept_stop_ids = set(kept_stops.stop_id)
 
         stop_times = _read(raw_dir / "stop_times.txt")
@@ -159,10 +172,12 @@ def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS)
         has_departure = stop_times.departure_time.str.strip().ne("")
         stop_times = stop_times[has_arrival & has_departure]
         kept_stop_times = stop_times[stop_times.stop_id.isin(kept_stop_ids)]
+        kept_stop_times = _keep_columns(kept_stop_times, STOP_TIME_COLUMNS)
         kept_trip_ids = set(kept_stop_times.trip_id)
 
         trips = _read(raw_dir / "trips.txt")
         kept_trips = trips[trips.trip_id.isin(kept_trip_ids)]
+        kept_trips = _keep_columns(kept_trips, TRIP_COLUMNS)
         kept_route_ids = set(kept_trips.route_id)
         kept_service_ids = set(kept_trips.service_id)
 
@@ -210,26 +225,39 @@ def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS)
     return output_dir
 
 
-def prepare_data(raw_zip: Path, raw_dir: Path, output_dir: Path, source_url: str | None = None) -> Path:
+def prepare_data(
+    raw_zip: Path,
+    raw_dir: Path,
+    output_dir: Path,
+    source_url: str | None = None,
+    bounds: Bounds = SWITZERLAND_BOUNDS,
+) -> Path:
     download_gtfs(raw_zip, source_url=source_url)
     extract_gtfs(raw_zip, raw_dir)
-    return filter_gtfs(raw_dir, output_dir)
+    return filter_gtfs(raw_dir, output_dir, bounds=bounds)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare a Zurich-area GTFS subset.")
+    parser = argparse.ArgumentParser(description="Prepare a Swiss GTFS subset.")
     parser.add_argument("--zip-path", default="backend/data/raw/gtfs.zip")
     parser.add_argument("--raw-dir", default="backend/data/raw/extracted")
     parser.add_argument("--output-dir", default="backend/data/filtered")
     parser.add_argument("--source-url", default=None)
+    parser.add_argument(
+        "--region",
+        choices=sorted(REGION_BOUNDS),
+        default="switzerland",
+        help="Geographic scope to keep from the source GTFS feed.",
+    )
     args = parser.parse_args()
     output = prepare_data(
         raw_zip=Path(args.zip_path),
         raw_dir=Path(args.raw_dir),
         output_dir=Path(args.output_dir),
         source_url=args.source_url,
+        bounds=REGION_BOUNDS[args.region],
     )
-    print(f"Wrote filtered GTFS to {output}")
+    print(f"Wrote {args.region} GTFS to {output}")
 
 
 if __name__ == "__main__":
