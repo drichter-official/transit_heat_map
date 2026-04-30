@@ -17,6 +17,7 @@ def tiny_gtfs_dir(tmp_path: Path) -> Path:
             ["A", "Zurich Alpha", 47.3760, 8.5410],
             ["B", "Zurich Beta", 47.3770, 8.5450],
             ["C", "Zurich Gamma", 47.3800, 8.5500],
+            ["D", "Zurich Delta", 47.3760, 8.5485],
         ],
     )
     write_table(

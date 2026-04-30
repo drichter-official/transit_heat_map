@@ -26,6 +26,14 @@ def test_spatial_lookup_finds_nearby_stops(tiny_gtfs_dir):
     assert nearby[0][1] < 1
 
 
+def test_spatial_lookup_prefilter_includes_longitude_nearby_stops(tiny_gtfs_dir):
+    gtfs = load_gtfs(tiny_gtfs_dir)
+
+    nearby = stops_within_radius(gtfs, 47.3760, 8.5410, 600)
+
+    assert any(stop_id == "D" for stop_id, _ in nearby)
+
+
 def test_cached_stop_lookup_uses_stop_id(tiny_gtfs_dir):
     gtfs = load_gtfs(tiny_gtfs_dir)
 

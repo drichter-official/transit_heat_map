@@ -145,7 +145,7 @@ def stops_within_radius(
 ) -> list[tuple[str, float]]:
     if gtfs.stop_kdtree is None:
         return []
-    radius_degrees = radius_m / 111_000
+    radius_degrees = radius_m / 70_000
     indexes = gtfs.stop_kdtree.query_ball_point([lat, lon], radius_degrees)
     results = []
     for index in indexes:
