@@ -7,4 +7,6 @@ venv/
 backend/data/raw/
 backend/data/cache/
 backend/data/filtered/
+uvicorn*.log
+uvicorn.pid
 *.pyc
