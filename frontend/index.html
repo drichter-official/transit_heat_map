@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transit Heatmap</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="controls" aria-label="Transit heatmap controls">
+    <h1>Transit Reach</h1>
+    <label for="stop-search">Station or stop</label>
+    <input id="stop-search" type="text" aria-label="Station or stop" autocomplete="off">
+    <ul id="stop-suggestions"></ul>
+
+    <label for="time-slider">Travel time: <span id="time-label">30</span> min</label>
+    <input id="time-slider" type="range" min="5" max="120" step="5" value="30">
+
+    <label for="departure-time">Departure</label>
+    <input id="departure-time" type="datetime-local">
+
+    <button id="go-btn" type="button">Show Heatmap</button>
+    <div id="status" role="status"></div>
+  </aside>
+  <main id="map" aria-label="Reachability map"></main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
