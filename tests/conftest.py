@@ -24,16 +24,20 @@ def tiny_gtfs_dir(tmp_path: Path) -> Path:
         tmp_path,
         "trips.txt",
         ["route_id", "service_id", "trip_id"],
-        [["R1", "WKD", "T1"]],
+        [
+            ["R1", "WKD", "T1"],
+            ["R1", "WKD", "T2"],
+        ],
     )
     write_table(
         tmp_path,
         "stop_times.txt",
         ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"],
         [
-            ["T1", "08:00:00", "08:00:00", "A", 1],
-            ["T1", "08:10:00", "08:10:00", "B", 2],
             ["T1", "08:20:00", "08:20:00", "C", 3],
+            ["T1", "08:10:00", "08:10:00", "B", 2],
+            ["T2", "07:50:00", "07:50:00", "A", 1],
+            ["T1", "08:00:00", "08:00:00", "A", 1],
         ],
     )
     write_table(
@@ -63,6 +67,9 @@ def tiny_gtfs_dir(tmp_path: Path) -> Path:
         tmp_path,
         "transfers.txt",
         ["from_stop_id", "to_stop_id", "transfer_type", "min_transfer_time"],
-        [["A", "B", 2, 180]],
+        [
+            ["A", "B", 2, 180],
+            ["A", "C", 3, 999],
+        ],
     )
     return tmp_path

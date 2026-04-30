@@ -104,6 +104,8 @@ def load_gtfs(data_dir: str | Path) -> GTFSData:
     transfers: dict[str, list[Transfer]] = defaultdict(list)
     if not transfers_df.empty:
         for row in transfers_df.itertuples(index=False):
+            if row.transfer_type == "3":
+                continue
             if row.from_stop_id in stops and row.to_stop_id in stops:
                 transfer_time = int(row.min_transfer_time or "120")
                 transfers[row.from_stop_id].append(

@@ -8,14 +8,23 @@ def test_load_gtfs_builds_stop_and_trip_indexes(tiny_gtfs_dir):
 
     assert gtfs.stops["A"].name == "Zurich Alpha"
     assert [entry.stop_id for entry in gtfs.trip_stops["T1"]] == ["A", "B", "C"]
-    assert [entry.trip_id for entry in gtfs.stop_times_by_stop["A"]] == ["T1"]
+    assert [entry.trip_id for entry in gtfs.stop_times_by_stop["A"]] == ["T2", "T1"]
+    assert [entry.departure_sec for entry in gtfs.stop_times_by_stop["A"]] == [28200, 28800]
 
 
 def test_get_active_trips_uses_active_services(tiny_gtfs_dir):
     gtfs = load_gtfs(tiny_gtfs_dir)
 
-    assert get_active_trips(gtfs, date(2026, 4, 30)) == {"T1"}
+    assert get_active_trips(gtfs, date(2026, 4, 30)) == {"T1", "T2"}
     assert get_active_trips(gtfs, date(2026, 5, 1)) == set()
+
+
+def test_load_gtfs_skips_forbidden_transfers(tiny_gtfs_dir):
+    gtfs = load_gtfs(tiny_gtfs_dir)
+
+    assert [(transfer.to_stop_id, transfer.transfer_time_sec) for transfer in gtfs.transfers["A"]] == [
+        ("B", 180)
+    ]
 
 
 def test_spatial_lookup_finds_nearby_stops(tiny_gtfs_dir):
