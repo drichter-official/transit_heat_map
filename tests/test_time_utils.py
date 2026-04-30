@@ -1,5 +1,7 @@
 from datetime import date, datetime
 
+import pytest
+
 from backend.models import ServiceCalendar
 from backend.time_utils import active_service_ids, parse_gtfs_date, parse_gtfs_time, seconds_since_midnight
 
@@ -7,6 +9,11 @@ from backend.time_utils import active_service_ids, parse_gtfs_date, parse_gtfs_t
 def test_parse_gtfs_time_handles_overnight_values():
     assert parse_gtfs_time("08:30:15") == 30615
     assert parse_gtfs_time("25:30:00") == 91800
+
+
+def test_parse_gtfs_time_rejects_negative_hours():
+    with pytest.raises(ValueError):
+        parse_gtfs_time("-01:00:00")
 
 
 def test_seconds_since_midnight_uses_local_clock_time():

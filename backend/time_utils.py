@@ -10,7 +10,7 @@ def parse_gtfs_time(value: str) -> int:
     if len(parts) != 3:
         raise ValueError(f"Invalid GTFS time: {value!r}")
     hours, minutes, seconds = (int(part) for part in parts)
-    if minutes < 0 or minutes > 59 or seconds < 0 or seconds > 59:
+    if hours < 0 or minutes < 0 or minutes > 59 or seconds < 0 or seconds > 59:
         raise ValueError(f"Invalid GTFS time: {value!r}")
     return hours * 3600 + minutes * 60 + seconds
 
