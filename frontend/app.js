@@ -50,12 +50,13 @@ function renderHeatmap(points) {
   if (heatLayer) {
     heatLayer.remove();
   }
+  map.invalidateSize();
   const heatPoints = points.map((point) => [point.lat, point.lng, point.weight]);
   heatLayer = L.heatLayer(heatPoints, {
-    radius: 24,
-    blur: 18,
+    radius: 16,
+    blur: 10,
     maxZoom: 13,
-    minOpacity: 0.25,
+    minOpacity: 0.18,
     gradient: {
       0.15: "#2563eb",
       0.4: "#16a34a",
@@ -69,6 +70,7 @@ function renderHeatmap(points) {
     const bounds = L.latLngBounds(points.map((point) => [point.lat, point.lng]));
     map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
   }
+  requestAnimationFrame(() => map.invalidateSize());
 }
 
 async function searchStops(query) {

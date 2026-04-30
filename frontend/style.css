@@ -110,7 +110,8 @@ button:hover {
 }
 
 #map {
-  flex: 1;
+  flex: 1 1 auto;
+  height: 100vh;
   min-width: 0;
 }
 
@@ -127,6 +128,9 @@ button:hover {
   }
 
   #map {
+    flex: none;
+    height: 58vh;
     min-height: 58vh;
+    width: 100%;
   }
 }

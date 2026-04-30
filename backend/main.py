@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,15 @@ class JobStore:
 
 def _serialize_points(points: list[dict[str, float]]) -> list[dict[str, float]]:
     return [{"lat": p["lat"], "lng": p["lng"], "weight": p["weight"]} for p in points]
+
+
+def _connection_counts(gtfs: GTFSData) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for from_stop_id, edges in gtfs.approx_edges_by_stop.items():
+        counts[from_stop_id] += len(edges)
+        for to_stop_id, _travel_sec in edges:
+            counts[to_stop_id] += 1
+    return dict(counts)
 
 
 def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_DIR) -> FastAPI:
@@ -88,6 +98,7 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
                 gtfs.stops,
                 seconds_since_midnight(departure_dt),
                 minutes * 60,
+                connection_counts=_connection_counts(gtfs),
             )
             job.status = "complete"
             job.quality = "schedule"
@@ -130,7 +141,13 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
             max_travel_seconds=minutes * 60,
             gtfs=gtfs,
         )
-        points = build_heatmap_points(best, gtfs.stops, departure_sec, minutes * 60)
+        points = build_heatmap_points(
+            best,
+            gtfs.stops,
+            departure_sec,
+            minutes * 60,
+            connection_counts=_connection_counts(gtfs),
+        )
         job = app.state.jobs.create()
         background_tasks.add_task(refine_job, job.id, lat, lon, minutes, departure_dt)
         warnings = [] if best else ["No reachable transit stops found"]
