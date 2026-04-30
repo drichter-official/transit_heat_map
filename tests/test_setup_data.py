@@ -198,6 +198,34 @@ def test_replace_dir_restores_existing_output_when_staging_move_fails(
     assert not list(tmp_path.glob(".filtered.backup-*"))
 
 
+def test_replace_dir_cleans_staging_when_backup_move_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    staging = tmp_path / ".filtered.tmp-test"
+    output = tmp_path / "filtered"
+    staging.mkdir()
+    output.mkdir()
+    (staging / "stops.txt").write_text("new,data\n", encoding="utf-8")
+    existing = output / "stops.txt"
+    existing.write_text("old,data\n", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_backup_move(self: Path, target: Path):
+        if self == output:
+            raise OSError("simulated backup move failure")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_backup_move)
+
+    with pytest.raises(OSError, match="simulated backup move failure"):
+        _replace_dir(staging, output)
+
+    assert existing.read_text(encoding="utf-8") == "old,data\n"
+    assert not staging.exists()
+    assert not list(tmp_path.glob(".filtered.backup-*"))
+
+
 def test_download_gtfs_uses_temp_zip_and_replaces_destination_after_validation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

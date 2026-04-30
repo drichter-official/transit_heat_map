@@ -48,16 +48,20 @@ def _replace_dir(staging_dir: Path, output_dir: Path) -> None:
 
     backup_dir = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.backup-", dir=output_dir.parent))
     backup_dir.rmdir()
-    output_dir.replace(backup_dir)
+    backup_created = False
     try:
+        output_dir.replace(backup_dir)
+        backup_created = True
         staging_dir.replace(output_dir)
     except Exception:
-        if output_dir.exists():
+        if backup_created and output_dir.exists():
             shutil.rmtree(output_dir, ignore_errors=True)
-        if backup_dir.exists() and not output_dir.exists():
+        if backup_created and backup_dir.exists() and not output_dir.exists():
             backup_dir.replace(output_dir)
         if staging_dir.exists():
             shutil.rmtree(staging_dir, ignore_errors=True)
+        if backup_dir.exists() and output_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
         raise
     shutil.rmtree(backup_dir, ignore_errors=True)
 
