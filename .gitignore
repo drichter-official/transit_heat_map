@@ -6,4 +6,5 @@ __pycache__/
 venv/
 backend/data/raw/
 backend/data/cache/
+backend/data/filtered/
 *.pyc
