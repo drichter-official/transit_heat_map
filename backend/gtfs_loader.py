@@ -55,6 +55,8 @@ def load_gtfs(data_dir: str | Path) -> GTFSData:
     stop_times_by_stop: dict[str, list[StopTime]] = defaultdict(list)
     trip_stops: dict[str, list[TripStop]] = defaultdict(list)
     for row in stop_times_df.itertuples(index=False):
+        if not row.arrival_time.strip() or not row.departure_time.strip():
+            continue
         arrival_sec = parse_gtfs_time(row.arrival_time)
         departure_sec = parse_gtfs_time(row.departure_time)
         stop_sequence = int(row.stop_sequence)
@@ -79,6 +81,23 @@ def load_gtfs(data_dir: str | Path) -> GTFSData:
         entries.sort(key=lambda entry: (entry.departure_sec, entry.trip_id, entry.stop_sequence))
     for entries in trip_stops.values():
         entries.sort(key=lambda entry: entry.stop_sequence)
+
+    approx_edge_best: dict[str, dict[str, int]] = defaultdict(dict)
+    for entries in trip_stops.values():
+        previous: TripStop | None = None
+        for entry in entries:
+            if previous is not None:
+                travel_sec = entry.arrival_sec - previous.departure_sec
+                if travel_sec >= 0:
+                    travel_sec = max(60, travel_sec)
+                    by_destination = approx_edge_best[previous.stop_id]
+                    if travel_sec < by_destination.get(entry.stop_id, travel_sec + 1):
+                        by_destination[entry.stop_id] = travel_sec
+            previous = entry
+    approx_edges_by_stop = {
+        stop_id: sorted(edges.items(), key=lambda item: (item[1], item[0]))
+        for stop_id, edges in approx_edge_best.items()
+    }
 
     calendars: dict[str, ServiceCalendar] = {}
     if not calendar_df.empty:
@@ -124,6 +143,7 @@ def load_gtfs(data_dir: str | Path) -> GTFSData:
         calendars=calendars,
         calendar_dates=dict(calendar_dates),
         transfers=dict(transfers),
+        approx_edges_by_stop=approx_edges_by_stop,
         stop_id_order=stop_id_order,
         stop_coordinates=coordinates,
         stop_kdtree=stop_kdtree,

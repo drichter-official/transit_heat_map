@@ -60,6 +60,7 @@ class GTFSData:
     calendars: dict[str, ServiceCalendar]
     calendar_dates: dict[date, dict[str, int]]
     transfers: dict[str, list[Transfer]]
+    approx_edges_by_stop: dict[str, list[tuple[str, int]]] = field(default_factory=dict)
     stop_id_order: list[str] = field(default_factory=list)
     stop_coordinates: Any = None
     stop_kdtree: Any = None

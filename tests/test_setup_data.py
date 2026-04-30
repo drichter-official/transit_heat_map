@@ -49,6 +49,7 @@ def test_filter_gtfs_keeps_consistent_zurich_subset(tmp_path: Path):
         [
             ["T1", "08:00:00", "08:00:00", "A", 1],
             ["T1", "08:05:00", "08:05:00", "B", 2],
+            ["T1", "", "", "B", 3],
             ["TX", "08:00:00", "08:00:00", "X", 1],
         ],
     )
@@ -88,6 +89,8 @@ def test_filter_gtfs_keeps_consistent_zurich_subset(tmp_path: Path):
     assert set(agency.agency_id) == {"AG1"}
     assert set(trips.trip_id) == {"T1"}
     assert set(stop_times.stop_id) == {"A", "B"}
+    assert not stop_times.arrival_time.isna().any()
+    assert not stop_times.departure_time.isna().any()
     assert set(calendar.service_id) == {"WKD"}
     assert set(calendar_dates.service_id) == {"WKD"}
     assert set(transfers.to_stop_id) == {"B"}

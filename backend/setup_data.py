@@ -155,6 +155,9 @@ def filter_gtfs(raw_dir: Path, output_dir: Path, bounds: Bounds = ZURICH_BOUNDS)
         kept_stop_ids = set(kept_stops.stop_id)
 
         stop_times = _read(raw_dir / "stop_times.txt")
+        has_arrival = stop_times.arrival_time.str.strip().ne("")
+        has_departure = stop_times.departure_time.str.strip().ne("")
+        stop_times = stop_times[has_arrival & has_departure]
         kept_stop_times = stop_times[stop_times.stop_id.isin(kept_stop_ids)]
         kept_trip_ids = set(kept_stop_times.trip_id)
 

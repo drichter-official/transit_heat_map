@@ -12,6 +12,19 @@ def test_load_gtfs_builds_stop_and_trip_indexes(tiny_gtfs_dir):
     assert [entry.departure_sec for entry in gtfs.stop_times_by_stop["A"]] == [28200, 28800]
 
 
+def test_load_gtfs_skips_stop_times_without_times(tiny_gtfs_dir):
+    gtfs = load_gtfs(tiny_gtfs_dir)
+
+    assert "D" not in {entry.stop_id for entry in gtfs.trip_stops["T1"]}
+
+
+def test_load_gtfs_builds_fast_approximate_trip_edges(tiny_gtfs_dir):
+    gtfs = load_gtfs(tiny_gtfs_dir)
+
+    assert gtfs.approx_edges_by_stop["A"] == [("B", 600)]
+    assert gtfs.approx_edges_by_stop["B"] == [("C", 600)]
+
+
 def test_get_active_trips_uses_active_services(tiny_gtfs_dir):
     gtfs = load_gtfs(tiny_gtfs_dir)
 

@@ -115,11 +115,7 @@ def compute_approximate_reachability(
                 deadline_sec,
             )
 
-        for board in gtfs.stop_times_by_stop.get(stop_id, []):
-            for stop_entry in gtfs.trip_stops.get(board.trip_id, []):
-                if stop_entry.stop_sequence <= board.stop_sequence:
-                    continue
-                travel_sec = max(60, stop_entry.arrival_sec - board.departure_sec)
-                _push_best(pq, best, stop_entry.stop_id, current_arrival + travel_sec, deadline_sec)
+        for next_stop_id, travel_sec in gtfs.approx_edges_by_stop.get(stop_id, []):
+            _push_best(pq, best, next_stop_id, current_arrival + travel_sec, deadline_sec)
 
     return {stop_id: int(arrival) for stop_id, arrival in best.items()}
