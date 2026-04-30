@@ -96,6 +96,7 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
                 gtfs.stops,
                 seconds_since_midnight(departure_dt),
                 minutes * 60,
+                max_points=None,
             )
             job.status = "complete"
             job.quality = "schedule"
