@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 import backend.setup_data as setup_data
-from backend.setup_data import Bounds, discover_download_url, download_gtfs, extract_gtfs, filter_gtfs
+from backend.setup_data import Bounds, _replace_dir, discover_download_url, download_gtfs, extract_gtfs, filter_gtfs
 from tests.helpers import write_table
 
 
@@ -168,6 +168,34 @@ def test_extract_gtfs_preserves_existing_output_when_zip_is_invalid(tmp_path: Pa
         extract_gtfs(zip_path, output)
 
     assert existing.read_text(encoding="utf-8") == "keep me\n"
+
+
+def test_replace_dir_restores_existing_output_when_staging_move_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    staging = tmp_path / ".filtered.tmp-test"
+    output = tmp_path / "filtered"
+    staging.mkdir()
+    output.mkdir()
+    (staging / "stops.txt").write_text("new,data\n", encoding="utf-8")
+    existing = output / "stops.txt"
+    existing.write_text("old,data\n", encoding="utf-8")
+    original_replace = Path.replace
+
+    def fail_staging_move(self: Path, target: Path):
+        if self == staging and target == output:
+            raise OSError("simulated final move failure")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staging_move)
+
+    with pytest.raises(OSError, match="simulated final move failure"):
+        _replace_dir(staging, output)
+
+    assert existing.read_text(encoding="utf-8") == "old,data\n"
+    assert not staging.exists()
+    assert not list(tmp_path.glob(".filtered.backup-*"))
 
 
 def test_download_gtfs_uses_temp_zip_and_replaces_destination_after_validation(
