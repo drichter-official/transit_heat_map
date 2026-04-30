@@ -46,29 +46,41 @@ function setOrigin(lat, lon, name) {
   map.panTo([lat, lon]);
 }
 
+function colorForWeight(weight) {
+  if (weight >= 0.8) {
+    return "#ef4444";
+  }
+  if (weight >= 0.6) {
+    return "#f97316";
+  }
+  if (weight >= 0.4) {
+    return "#facc15";
+  }
+  if (weight >= 0.2) {
+    return "#16a34a";
+  }
+  return "#2563eb";
+}
+
 function renderHeatmap(points) {
   if (heatLayer) {
     heatLayer.remove();
   }
   map.invalidateSize();
-  const heatPoints = points.map((point) => [point.lat, point.lng, point.weight]);
-  heatLayer = L.heatLayer(heatPoints, {
-    radius: 16,
-    blur: 10,
-    maxZoom: 13,
-    minOpacity: 0.18,
-    gradient: {
-      0.15: "#2563eb",
-      0.4: "#16a34a",
-      0.65: "#facc15",
-      0.9: "#f97316",
-      1.0: "#ef4444",
-    },
-  }).addTo(map);
+  const circles = points.map((point) => {
+    const color = colorForWeight(point.weight);
+    return L.circle([point.lat, point.lng], {
+      radius: point.radius_m,
+      stroke: false,
+      color,
+      fillColor: color,
+      fillOpacity: 0.28,
+    });
+  });
+  heatLayer = L.featureGroup(circles).addTo(map);
 
   if (points.length > 0) {
-    const bounds = L.latLngBounds(points.map((point) => [point.lat, point.lng]));
-    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
+    map.fitBounds(heatLayer.getBounds(), { padding: [30, 30], maxZoom: 13 });
   }
   requestAnimationFrame(() => map.invalidateSize());
 }
