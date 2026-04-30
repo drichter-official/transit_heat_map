@@ -7,7 +7,7 @@ def test_frontend_uses_leaflet_and_not_google_maps():
     assert "leaflet" in html.lower()
     assert "leaflet-heat" not in html.lower()
     assert "maps.googleapis.com" not in html
-    assert "app.js?v=walking-radius-2" in html
+    assert "app.js?v=smooth-canvas-heat" in html
 
 
 def test_frontend_polling_and_status_contracts_exist():
@@ -24,7 +24,7 @@ def test_frontend_invalidates_leaflet_size_before_heat_render():
 
     assert "map.invalidateSize()" in js
     assert "requestAnimationFrame(() => map.invalidateSize())" in js
-    assert js.index("map.invalidateSize()") < js.index("L.circle")
+    assert js.index("map.invalidateSize()") < js.index("heatLayer = createReachabilityLayer")
 
 
 def test_frontend_map_has_stable_responsive_height():
@@ -34,11 +34,22 @@ def test_frontend_map_has_stable_responsive_height():
     assert "height: 58vh;" in css
 
 
-def test_frontend_uses_tighter_station_dot_heat_kernel():
+def test_frontend_renders_single_opacity_canvas_overlay():
     js = Path("frontend/app.js").read_text(encoding="utf-8")
 
-    assert "L.circle" in js
-    assert "L.featureGroup" in js
-    assert "radius: point.radius_m" in js
-    assert "colorForWeight(point.weight)" in js
+    assert "createReachabilityLayer" in js
+    assert "canvas.style.opacity" in js
+    assert "Float32Array" in js
+    assert "putImageData" in js
+    assert "fillOpacity" not in js
+    assert "L.circle" not in js
     assert "L.heatLayer" not in js
+
+
+def test_frontend_interpolates_heat_colors_smoothly():
+    js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+    assert "function interpolateColor" in js
+    assert "HEAT_STOPS" in js
+    assert "rgbForWeight(weight)" in js
+    assert "if (weight >= 0.8)" not in js
