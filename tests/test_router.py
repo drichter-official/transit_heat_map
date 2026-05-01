@@ -4,8 +4,12 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from backend.gtfs_loader import get_active_trips, load_gtfs
-from backend.models import GTFSData, Stop
-from backend.router import compute_approximate_reachability, compute_schedule_reachability
+from backend.models import GTFSData, Stop, StopTime, TripStop
+from backend.router import (
+    compute_approximate_reachability,
+    compute_schedule_reachability,
+    compute_window_normalized_reachability,
+)
 
 
 def test_schedule_reachability_finds_direct_trip(tiny_gtfs_dir):
@@ -87,3 +91,81 @@ def test_approximate_reachability_uses_fast_trip_edges():
     )
 
     assert best["B"] == 8 * 3600 + 300
+
+
+def test_window_normalized_reachability_subtracts_initial_wait_for_first_connection():
+    stops = {
+        "A": Stop(id="A", name="Alpha", lat=47.3760, lon=8.5410),
+        "B": Stop(id="B", name="Beta", lat=47.5000, lon=8.8000),
+    }
+    coordinates = np.array([(stops["A"].lat, stops["A"].lon), (stops["B"].lat, stops["B"].lon)])
+    gtfs = GTFSData(
+        stops=stops,
+        stop_times_by_stop={
+            "A": [StopTime("T1", "A", 12 * 3600 + 30 * 60, 12 * 3600 + 30 * 60, 1)]
+        },
+        trip_stops={
+            "T1": [
+                TripStop("T1", "A", 12 * 3600 + 30 * 60, 12 * 3600 + 30 * 60, 1),
+                TripStop("T1", "B", 13 * 3600, 13 * 3600, 2),
+            ]
+        },
+        trip_service_ids={"T1": "WKD"},
+        calendars={},
+        calendar_dates={},
+        transfers={},
+        stop_id_order=["A", "B"],
+        stop_coordinates=coordinates,
+        stop_kdtree=cKDTree(coordinates),
+    )
+
+    best = compute_window_normalized_reachability(
+        origin_lat=47.3760,
+        origin_lon=8.5410,
+        window_start_sec=12 * 3600,
+        first_departure_window_sec=2 * 3600,
+        max_travel_seconds=40 * 60,
+        gtfs=gtfs,
+        active_trips={"T1"},
+    )
+
+    assert best["B"] == 12 * 3600 + 30 * 60
+
+
+def test_window_normalized_reachability_rejects_trips_longer_than_travel_limit():
+    stops = {
+        "A": Stop(id="A", name="Alpha", lat=47.3760, lon=8.5410),
+        "B": Stop(id="B", name="Beta", lat=47.5000, lon=8.8000),
+    }
+    coordinates = np.array([(stops["A"].lat, stops["A"].lon), (stops["B"].lat, stops["B"].lon)])
+    gtfs = GTFSData(
+        stops=stops,
+        stop_times_by_stop={
+            "A": [StopTime("T1", "A", 12 * 3600 + 30 * 60, 12 * 3600 + 30 * 60, 1)]
+        },
+        trip_stops={
+            "T1": [
+                TripStop("T1", "A", 12 * 3600 + 30 * 60, 12 * 3600 + 30 * 60, 1),
+                TripStop("T1", "B", 13 * 3600, 13 * 3600, 2),
+            ]
+        },
+        trip_service_ids={"T1": "WKD"},
+        calendars={},
+        calendar_dates={},
+        transfers={},
+        stop_id_order=["A", "B"],
+        stop_coordinates=coordinates,
+        stop_kdtree=cKDTree(coordinates),
+    )
+
+    best = compute_window_normalized_reachability(
+        origin_lat=47.3760,
+        origin_lon=8.5410,
+        window_start_sec=12 * 3600,
+        first_departure_window_sec=2 * 3600,
+        max_travel_seconds=20 * 60,
+        gtfs=gtfs,
+        active_trips={"T1"},
+    )
+
+    assert "B" not in best

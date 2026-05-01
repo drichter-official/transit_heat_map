@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime, time as dt_time, timedelta
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
@@ -13,10 +13,16 @@ from fastapi.staticfiles import StaticFiles
 from backend.gtfs_loader import get_active_trips, load_gtfs
 from backend.heatmap_builder import build_heatmap_points
 from backend.models import GTFSData, JobRecord
-from backend.router import compute_approximate_reachability, compute_schedule_reachability
-from backend.time_utils import seconds_since_midnight
+from backend.router import (
+    compute_approximate_reachability,
+    compute_schedule_reachability,
+    compute_window_normalized_reachability,
+)
+from backend.time_utils import active_service_ids, seconds_since_midnight
 
 DEFAULT_DATA_DIR = Path("backend/data/filtered")
+TYPICAL_WINDOW_START_HOUR = 12
+FIRST_DEPARTURE_WINDOW_SEC = 2 * 3600
 
 
 class JobStore:
@@ -42,6 +48,32 @@ def _serialize_points(points: list[dict[str, float]]) -> list[dict[str, float]]:
         }
         for p in points
     ]
+
+
+def _representative_service_date(gtfs: GTFSData) -> date:
+    if gtfs.calendars:
+        start = min(calendar.start_date for calendar in gtfs.calendars.values())
+        end = max(calendar.end_date for calendar in gtfs.calendars.values())
+        current = start
+        while current <= end:
+            if active_service_ids(gtfs.calendars, gtfs.calendar_dates, current):
+                return current
+            current += timedelta(days=1)
+
+    added_dates = sorted(
+        service_date
+        for service_date, exceptions in gtfs.calendar_dates.items()
+        if any(exception_type == 1 for exception_type in exceptions.values())
+    )
+    if added_dates:
+        return added_dates[0]
+
+    return datetime.now().date()
+
+
+def _typical_window_start_datetime(gtfs: GTFSData) -> datetime:
+    service_date = _representative_service_date(gtfs)
+    return datetime.combine(service_date, dt_time(hour=TYPICAL_WINDOW_START_HOUR))
 
 
 def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_DIR) -> FastAPI:
@@ -74,7 +106,8 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
         lat: float,
         lon: float,
         minutes: int,
-        departure_dt: datetime,
+        window_start_dt: datetime,
+        normalize_initial_wait: bool,
     ) -> None:
         gtfs = require_gtfs()
         job = app.state.jobs.get(job_id)
@@ -82,19 +115,30 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
             return
         started = time.perf_counter()
         try:
-            active_trips = get_active_trips(gtfs, departure_dt.date())
-            best = compute_schedule_reachability(
-                origin_lat=lat,
-                origin_lon=lon,
-                departure_datetime=departure_dt,
-                max_travel_seconds=minutes * 60,
-                gtfs=gtfs,
-                active_trips=active_trips,
-            )
+            active_trips = get_active_trips(gtfs, window_start_dt.date())
+            if normalize_initial_wait:
+                best = compute_window_normalized_reachability(
+                    origin_lat=lat,
+                    origin_lon=lon,
+                    window_start_sec=seconds_since_midnight(window_start_dt),
+                    first_departure_window_sec=FIRST_DEPARTURE_WINDOW_SEC,
+                    max_travel_seconds=minutes * 60,
+                    gtfs=gtfs,
+                    active_trips=active_trips,
+                )
+            else:
+                best = compute_schedule_reachability(
+                    origin_lat=lat,
+                    origin_lon=lon,
+                    departure_datetime=window_start_dt,
+                    max_travel_seconds=minutes * 60,
+                    gtfs=gtfs,
+                    active_trips=active_trips,
+                )
             points = build_heatmap_points(
                 best,
                 gtfs.stops,
-                seconds_since_midnight(departure_dt),
+                seconds_since_midnight(window_start_dt),
                 minutes * 60,
                 max_points=None,
             )
@@ -130,8 +174,9 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
         departure: str | None = None,
     ) -> dict[str, object]:
         gtfs = require_gtfs()
-        departure_dt = datetime.fromisoformat(departure) if departure else datetime.now()
-        departure_sec = seconds_since_midnight(departure_dt)
+        window_start_dt = datetime.fromisoformat(departure) if departure else _typical_window_start_datetime(gtfs)
+        normalize_initial_wait = departure is None
+        departure_sec = seconds_since_midnight(window_start_dt)
         best = compute_approximate_reachability(
             origin_lat=lat,
             origin_lon=lon,
@@ -146,7 +191,15 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
             minutes * 60,
         )
         job = app.state.jobs.create()
-        background_tasks.add_task(refine_job, job.id, lat, lon, minutes, departure_dt)
+        background_tasks.add_task(
+            refine_job,
+            job.id,
+            lat,
+            lon,
+            minutes,
+            window_start_dt,
+            normalize_initial_wait,
+        )
         warnings = [] if best else ["No reachable transit stops found"]
         return {
             "quality": "approximate",

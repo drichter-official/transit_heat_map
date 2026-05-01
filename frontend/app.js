@@ -10,7 +10,6 @@ const searchInput = document.getElementById("stop-search");
 const suggestions = document.getElementById("stop-suggestions");
 const timeSlider = document.getElementById("time-slider");
 const timeLabel = document.getElementById("time-label");
-const departureInput = document.getElementById("departure-time");
 const goButton = document.getElementById("go-btn");
 const statusEl = document.getElementById("status");
 
@@ -36,11 +35,6 @@ function initMap() {
     setOrigin(event.latlng.lat, event.latlng.lng, "Custom location");
   });
 
-  const now = new Date();
-  now.setSeconds(0, 0);
-  departureInput.value = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
 }
 
 function setStatus(message, mode = "neutral") {
@@ -235,12 +229,11 @@ async function fetchHeatmap() {
     clearTimeout(activePollTimer);
   }
 
-  setStatus("Computing approximate result...", "loading");
+  setStatus("Computing quick network estimate...", "loading");
   const params = new URLSearchParams({
     lat: selectedOrigin.lat,
     lon: selectedOrigin.lon,
     minutes: timeSlider.value,
-    departure: departureInput.value,
   });
   const response = await fetch(`${API_BASE}/api/heatmap?${params.toString()}`);
   if (!response.ok) {
@@ -248,7 +241,7 @@ async function fetchHeatmap() {
   }
   const data = await response.json();
   renderHeatmap(data.points);
-  setStatus(`Approximate result: ${data.stop_count} stops. Refining...`, "loading");
+  setStatus(`Quick estimate: ${data.stop_count} stops. Checking typical 2-hour connection window...`, "loading");
   pollJob(data.job_id);
 }
 
@@ -268,7 +261,7 @@ async function pollJob(jobId) {
     return;
   }
   renderHeatmap(data.points);
-  setStatus(`Schedule result: ${data.stop_count} stops in ${data.computation_ms} ms.`, "success");
+  setStatus(`Typical connection-window result: ${data.stop_count} stops in ${data.computation_ms} ms.`, "success");
 }
 
 let debounceTimer;

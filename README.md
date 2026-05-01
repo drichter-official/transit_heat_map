@@ -40,4 +40,4 @@ Open `http://localhost:8000`.
 
 ## Behavior
 
-The first heatmap is approximate and should appear quickly. The backend then computes a schedule-based refinement in the background; the frontend polls the job endpoint and replaces the heatmap when the refined result is ready.
+The first heatmap is an approximate general network reach estimate and should appear quickly. The backend then checks first connections in a representative two-hour window starting at midday, subtracts the initial wait until the first connection starts, keeps the best journey duration per stop, and replaces the heatmap when the refined result is ready.

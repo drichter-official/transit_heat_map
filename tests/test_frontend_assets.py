@@ -7,7 +7,7 @@ def test_frontend_uses_leaflet_and_not_google_maps():
     assert "leaflet" in html.lower()
     assert "leaflet-heat" not in html.lower()
     assert "maps.googleapis.com" not in html
-    assert "app.js?v=country-visible-heat" in html
+    assert "app.js?v=connection-window-reach" in html
 
 
 def test_frontend_polling_and_status_contracts_exist():
@@ -15,8 +15,18 @@ def test_frontend_polling_and_status_contracts_exist():
 
     assert "fetchHeatmap" in js
     assert "pollJob" in js
-    assert "Approximate result" in js
-    assert "Schedule result" in js
+    assert "Quick estimate" in js
+    assert "Typical connection-window result" in js
+
+
+def test_frontend_uses_general_reachability_without_departure_picker():
+    html = Path("frontend/index.html").read_text(encoding="utf-8")
+    js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+    assert 'id="departure-time"' not in html
+    assert 'type="datetime-local"' not in html
+    assert "departureInput" not in js
+    assert "departure:" not in js
 
 
 def test_frontend_invalidates_leaflet_size_before_heat_render():
