@@ -7,7 +7,7 @@ def test_frontend_uses_leaflet_and_not_google_maps():
     assert "leaflet" in html.lower()
     assert "leaflet-heat" not in html.lower()
     assert "maps.googleapis.com" not in html
-    assert "app.js?v=smooth-canvas-heat" in html
+    assert "app.js?v=country-visible-heat" in html
 
 
 def test_frontend_polling_and_status_contracts_exist():
@@ -53,3 +53,12 @@ def test_frontend_interpolates_heat_colors_smoothly():
     assert "HEAT_STOPS" in js
     assert "rgbForWeight(weight)" in js
     assert "if (weight >= 0.8)" not in js
+
+
+def test_frontend_keeps_distant_reachable_points_visible_at_country_zoom():
+    js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+    assert "MIN_RENDER_RADIUS_PX" in js
+    assert "geographicRadiusPx" in js
+    assert "MIN_RENDER_RADIUS_PX * RENDER_SCALE" in js
+    assert "Math.max(geographicRadiusPx" in js

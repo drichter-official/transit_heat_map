@@ -16,6 +16,7 @@ const statusEl = document.getElementById("status");
 
 const OVERLAY_OPACITY = "0.48";
 const RENDER_SCALE = 0.45;
+const MIN_RENDER_RADIUS_PX = 7;
 const HEAT_STOPS = [
   { weight: 0, color: "#2563eb" },
   { weight: 0.25, color: "#16a34a" },
@@ -154,7 +155,8 @@ function createReachabilityLayer(points) {
         const center = this._map.latLngToLayerPoint([point.lat, point.lng]).subtract(this._topLeft);
         const cx = center.x * RENDER_SCALE;
         const cy = center.y * RENDER_SCALE;
-        const radiusPx = Math.max(1, (point.radius_m / metersPerPixel(point.lat, this._map.getZoom())) * RENDER_SCALE);
+        const geographicRadiusPx = Math.max(1, (point.radius_m / metersPerPixel(point.lat, this._map.getZoom())) * RENDER_SCALE);
+        const radiusPx = Math.max(geographicRadiusPx, MIN_RENDER_RADIUS_PX * RENDER_SCALE);
         const minX = Math.max(0, Math.floor(cx - radiusPx));
         const maxX = Math.min(width - 1, Math.ceil(cx + radiusPx));
         const minY = Math.max(0, Math.floor(cy - radiusPx));
