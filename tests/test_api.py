@@ -20,6 +20,31 @@ def test_search_stops_returns_matches(tiny_gtfs_dir: Path):
     assert response.json()[0]["name"] == "Zurich Alpha"
 
 
+def test_search_stops_collapses_platform_duplicates(tiny_gtfs_dir: Path):
+    gtfs = load_gtfs(tiny_gtfs_dir)
+    gtfs.stops["A:1"] = type(gtfs.stops["A"])(
+        id="A:1",
+        name=gtfs.stops["A"].name,
+        lat=gtfs.stops["A"].lat,
+        lon=gtfs.stops["A"].lon,
+    )
+    gtfs.stops["A:2"] = type(gtfs.stops["A"])(
+        id="A:2",
+        name=gtfs.stops["A"].name,
+        lat=gtfs.stops["A"].lat,
+        lon=gtfs.stops["A"].lon,
+    )
+    app = create_app(gtfs_data=gtfs)
+    client = TestClient(app)
+
+    response = client.get("/api/stops/search", params={"q": "alpha"})
+
+    matches = [item for item in response.json() if item["name"] == "Zurich Alpha"]
+    assert response.status_code == 200
+    assert len(matches) == 1
+    assert matches[0]["id"] == "A"
+
+
 def test_heatmap_returns_approximate_points_and_job(tiny_gtfs_dir: Path):
     app = create_app(gtfs_data=load_gtfs(tiny_gtfs_dir))
     client = TestClient(app)

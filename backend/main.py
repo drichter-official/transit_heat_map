@@ -50,6 +50,23 @@ def _serialize_points(points: list[dict[str, float]]) -> list[dict[str, float]]:
     ]
 
 
+def _stop_search_sort_key(item: dict[str, object]) -> tuple[str, int, str]:
+    stop_id = str(item["id"])
+    return (str(item["name"]), 1 if ":" in stop_id else 0, stop_id)
+
+
+def _dedupe_stop_search_results(results: list[dict[str, object]]) -> list[dict[str, object]]:
+    by_station_key: dict[tuple[str, float, float], dict[str, object]] = {}
+    for item in sorted(results, key=_stop_search_sort_key):
+        key = (
+            str(item["name"]).casefold(),
+            round(float(item["lat"]), 6),
+            round(float(item["lon"]), 6),
+        )
+        by_station_key.setdefault(key, item)
+    return sorted(by_station_key.values(), key=_stop_search_sort_key)
+
+
 def _representative_service_date(gtfs: GTFSData) -> date:
     if gtfs.calendars:
         start = min(calendar.start_date for calendar in gtfs.calendars.values())
@@ -163,7 +180,7 @@ def create_app(gtfs_data: GTFSData | None = None, data_dir: Path = DEFAULT_DATA_
             for stop in gtfs.stops.values()
             if needle in stop.name.casefold()
         ]
-        return sorted(results, key=lambda item: str(item["name"]))[:10]
+        return _dedupe_stop_search_results(results)[:10]
 
     @app.get("/api/heatmap")
     async def get_heatmap(
