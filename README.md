@@ -1,6 +1,6 @@
 # Transit Heatmap
 
-Local-first public transport reachability heatmap for Switzerland.
+Local-first public transport reachability heatmap for Switzerland and London.
 
 ## Setup
 
@@ -23,6 +23,15 @@ To prepare the smaller Zurich development feed instead, run:
 ```powershell
 python -m backend.setup_data --region zurich
 ```
+
+To prepare a London feed, provide a GTFS schedule ZIP URL:
+
+```powershell
+python -m backend.setup_data --region london --source-url "https://example.test/london-gtfs.zip"
+```
+
+You can also set `TRANSIT_HEATMAP_LONDON_GTFS_URL` and omit `--source-url`.
+TfL's live timetable feeds require portal access, and the public Journey Planner example ZIP is TransXChange XML rather than GTFS, so this backend expects a GTFS-converted London schedule feed.
 
 ## Run Tests
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import tempfile
 import urllib.request
@@ -24,12 +25,22 @@ class Bounds:
     max_lon: float
 
 
+@dataclass(frozen=True)
+class RegionConfig:
+    bounds: Bounds
+    source_env_var: str | None = None
+
+
 SWITZERLAND_BOUNDS = Bounds(min_lat=45.75, max_lat=47.95, min_lon=5.75, max_lon=10.70)
 ZURICH_BOUNDS = Bounds(min_lat=47.05, max_lat=47.75, min_lon=8.25, max_lon=8.95)
-REGION_BOUNDS = {
-    "switzerland": SWITZERLAND_BOUNDS,
-    "zurich": ZURICH_BOUNDS,
+LONDON_BOUNDS = Bounds(min_lat=51.25, max_lat=51.75, min_lon=-0.55, max_lon=0.35)
+LONDON_GTFS_SOURCE_ENV_VAR = "TRANSIT_HEATMAP_LONDON_GTFS_URL"
+REGION_CONFIGS = {
+    "switzerland": RegionConfig(bounds=SWITZERLAND_BOUNDS),
+    "zurich": RegionConfig(bounds=ZURICH_BOUNDS),
+    "london": RegionConfig(bounds=LONDON_BOUNDS, source_env_var=LONDON_GTFS_SOURCE_ENV_VAR),
 }
+REGION_BOUNDS = {name: config.bounds for name, config in REGION_CONFIGS.items()}
 STOP_COLUMNS = ["stop_id", "stop_name", "stop_lat", "stop_lon"]
 TRIP_COLUMNS = ["route_id", "service_id", "trip_id"]
 STOP_TIME_COLUMNS = ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]
@@ -139,6 +150,21 @@ def download_gtfs(destination: Path, source_url: str | None = None) -> Path:
     return destination
 
 
+def resolve_source_url(region: str, source_url: str | None) -> str | None:
+    if source_url:
+        return source_url
+    config = REGION_CONFIGS[region]
+    if config.source_env_var:
+        env_url = os.environ.get(config.source_env_var)
+        if env_url:
+            return env_url
+        raise ValueError(
+            f"London setup requires a GTFS schedule ZIP URL via --source-url or {config.source_env_var}. "
+            "TfL live timetable feeds require portal registration and are not unauthenticated GTFS downloads."
+        )
+    return None
+
+
 def extract_gtfs(zip_path: Path, output_dir: Path) -> Path:
     staging_dir = _make_staging_dir(output_dir)
     try:
@@ -238,7 +264,7 @@ def prepare_data(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare a Swiss GTFS subset.")
+    parser = argparse.ArgumentParser(description="Prepare a GTFS subset.")
     parser.add_argument("--zip-path", default="backend/data/raw/gtfs.zip")
     parser.add_argument("--raw-dir", default="backend/data/raw/extracted")
     parser.add_argument("--output-dir", default="backend/data/filtered")
@@ -250,11 +276,15 @@ def main() -> None:
         help="Geographic scope to keep from the source GTFS feed.",
     )
     args = parser.parse_args()
+    try:
+        source_url = resolve_source_url(args.region, args.source_url)
+    except ValueError as error:
+        parser.error(str(error))
     output = prepare_data(
         raw_zip=Path(args.zip_path),
         raw_dir=Path(args.raw_dir),
         output_dir=Path(args.output_dir),
-        source_url=args.source_url,
+        source_url=source_url,
         bounds=REGION_BOUNDS[args.region],
     )
     print(f"Wrote {args.region} GTFS to {output}")

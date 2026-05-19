@@ -5,7 +5,16 @@ import pandas as pd
 import pytest
 
 import backend.setup_data as setup_data
-from backend.setup_data import Bounds, _replace_dir, discover_download_url, download_gtfs, extract_gtfs, filter_gtfs
+from backend.setup_data import (
+    Bounds,
+    REGION_BOUNDS,
+    _replace_dir,
+    discover_download_url,
+    download_gtfs,
+    extract_gtfs,
+    filter_gtfs,
+    resolve_source_url,
+)
 from tests.helpers import write_table
 
 
@@ -135,6 +144,80 @@ def test_filter_gtfs_defaults_to_switzerland_scope(tmp_path: Path):
 
     assert set(stops.stop_id) == {"ZRH", "GVA"}
     assert set(stop_times.stop_id) == {"ZRH", "GVA"}
+
+
+def test_filter_gtfs_can_prepare_london_scope(tmp_path: Path):
+    raw = tmp_path / "raw"
+    out = tmp_path / "filtered"
+    raw.mkdir()
+
+    write_table(
+        raw,
+        "stops.txt",
+        ["stop_id", "stop_name", "stop_lat", "stop_lon"],
+        [
+            ["VIC", "London Victoria", 51.4952, -0.1439],
+            ["WAT", "Waterloo", 51.5031, -0.1132],
+            ["BHM", "Birmingham New Street", 52.4778, -1.8990],
+        ],
+    )
+    write_table(
+        raw,
+        "trips.txt",
+        ["route_id", "service_id", "trip_id"],
+        [["R1", "WKD", "T1"], ["R2", "WKD", "T2"]],
+    )
+    write_table(
+        raw,
+        "stop_times.txt",
+        ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"],
+        [
+            ["T1", "08:00:00", "08:00:00", "VIC", 1],
+            ["T1", "08:08:00", "08:08:00", "WAT", 2],
+            ["T2", "08:00:00", "08:00:00", "BHM", 1],
+        ],
+    )
+
+    filter_gtfs(raw, out, REGION_BOUNDS["london"])
+
+    stops = pd.read_csv(out / "stops.txt")
+    trips = pd.read_csv(out / "trips.txt")
+    stop_times = pd.read_csv(out / "stop_times.txt")
+
+    assert set(stops.stop_id) == {"VIC", "WAT"}
+    assert set(trips.trip_id) == {"T1"}
+    assert set(stop_times.stop_id) == {"VIC", "WAT"}
+
+
+def test_resolve_source_url_requires_london_gtfs_source(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("TRANSIT_HEATMAP_LONDON_GTFS_URL", raising=False)
+
+    with pytest.raises(ValueError, match="London setup requires a GTFS schedule ZIP URL"):
+        resolve_source_url("london", None)
+
+
+def test_resolve_source_url_uses_london_gtfs_env(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("TRANSIT_HEATMAP_LONDON_GTFS_URL", "https://example.test/london.zip")
+
+    assert resolve_source_url("london", None) == "https://example.test/london.zip"
+
+
+def test_main_reports_london_source_requirement(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    monkeypatch.delenv("TRANSIT_HEATMAP_LONDON_GTFS_URL", raising=False)
+    monkeypatch.setattr(setup_data, "prepare_data", lambda **kwargs: Path("unused"))
+    monkeypatch.setattr(
+        "sys.argv",
+        ["setup_data", "--region", "london"],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        setup_data.main()
+
+    assert exc_info.value.code == 2
+    assert "London setup requires a GTFS schedule ZIP URL" in capsys.readouterr().err
 
 
 def test_filter_gtfs_writes_minimal_runtime_columns(tmp_path: Path):
