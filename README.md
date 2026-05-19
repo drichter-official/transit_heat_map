@@ -47,6 +47,16 @@ uvicorn backend.main:app --reload --port 8000
 
 Open `http://localhost:8000`.
 
+## Static GitHub Pages
+
+The frontend can also run without FastAPI by loading `frontend/static-data/transit-network.json` and computing approximate reachability in the browser. Regenerate that file from a prepared GTFS feed with:
+
+```powershell
+python -m backend.static_export --data-dir backend/data/filtered --output frontend/static-data/transit-network.json
+```
+
+When served from GitHub Pages or another non-local static host, the app uses the static data automatically. To point the same frontend at a hosted API instead, open it with `?api=https://your-api.example.com`.
+
 ## Behavior
 
 The first heatmap is an approximate general network reach estimate and should appear quickly. The backend then checks first connections in a representative two-hour window starting at midday, subtracts the initial wait until the first connection starts, keeps the best journey duration per stop, and replaces the heatmap when the refined result is ready.

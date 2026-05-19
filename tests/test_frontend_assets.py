@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -7,7 +8,7 @@ def test_frontend_uses_leaflet_and_not_google_maps():
     assert "leaflet" in html.lower()
     assert "leaflet-heat" not in html.lower()
     assert "maps.googleapis.com" not in html
-    assert "app.js?v=connection-window-reach" in html
+    assert "app.js?v=static-network-reach" in html
 
 
 def test_frontend_polling_and_status_contracts_exist():
@@ -72,3 +73,30 @@ def test_frontend_keeps_distant_reachable_points_visible_at_country_zoom():
     assert "geographicRadiusPx" in js
     assert "MIN_RENDER_RADIUS_PX * RENDER_SCALE" in js
     assert "Math.max(geographicRadiusPx" in js
+
+
+def test_frontend_can_run_static_github_pages_mode_without_api_backend():
+    js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+    assert "STATIC_DATA_URL" in js
+    assert "static-data/transit-network.json" in js
+    assert "USE_STATIC_DATA" in js
+    assert "loadStaticNetwork" in js
+    assert "computeStaticReachability" in js
+    assert "searchStaticStops" in js
+    assert "Static network result" in js
+    assert "localhost:8000" not in js
+    assert "FORCE_STATIC" in js
+    assert "IS_LOCAL_HTTP_HOST" in js
+    assert "const USE_STATIC_DATA = !EXPLICIT_API_BASE" in js
+    assert "window.location.protocol !== \"file:\"" in js
+
+
+def test_frontend_static_data_asset_is_publishable():
+    data_path = Path("frontend/static-data/transit-network.json")
+
+    assert data_path.is_file()
+    assert data_path.as_posix().islower()
+    payload = json.loads(data_path.read_text(encoding="utf-8"))
+    assert len(payload["stops"]) > 1000
+    assert any(stop[0] == "8503000" and stop[1] == "Zürich HB" for stop in payload["stops"])
