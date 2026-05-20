@@ -9,7 +9,9 @@ const USE_STATIC_DATA = !EXPLICIT_API_BASE && window.location.protocol !== "file
 );
 const API_BASE_RAW = EXPLICIT_API_BASE || (USE_STATIC_DATA ? "" : STORED_API_BASE);
 const API_BASE = API_BASE_RAW.replace(/\/$/, "");
-const STATIC_DATA_URL = "static-data/transit-network.json";
+const STATIC_DATA_BASE = "static-data/";
+const STATIC_MANIFEST_URL = `${STATIC_DATA_BASE}manifest.json`;
+const STATIC_LEGACY_DATA_URL = `${STATIC_DATA_BASE}transit-network.json`;
 
 let map;
 let heatLayer;
@@ -250,6 +252,7 @@ function prepareStaticNetwork(payload) {
     search: entry[4] || String(entry[1]).toLowerCase(),
   }));
   return {
+    version: 1,
     constants,
     defaultCenter: payload.default_center || [47.376, 8.541],
     stops,
@@ -259,15 +262,73 @@ function prepareStaticNetwork(payload) {
   };
 }
 
+function decodeCoordinate(value, precision) {
+  return Number(value) / precision;
+}
+
+function staticDataUrl(path) {
+  return `${STATIC_DATA_BASE}${path}`;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Static network data unavailable: ${response.status}`);
+  }
+  return response.json();
+}
+
+function prepareStaticV2Network(manifest, searchIndex) {
+  const precision = manifest.coordinate_precision || searchIndex.coordinate_precision || 1000000;
+  const constants = {
+    walk_mps: 1.39,
+    first_walk_m: 800,
+    transfer_walk_m: 400,
+    grid_degrees: searchIndex.grid_degrees || 0.01,
+    ...manifest.constants,
+  };
+  const stops = searchIndex.stops.map((entry, index) => ({
+    index,
+    id: entry[0],
+    name: entry[1],
+    lat: decodeCoordinate(entry[2], precision),
+    lon: decodeCoordinate(entry[3], precision),
+    search: entry[4] || String(entry[1]).toLowerCase(),
+  }));
+  return {
+    version: 2,
+    constants,
+    defaultCenter: manifest.default_center || [47.376, 8.541],
+    stops,
+    grid: searchIndex.grid || {},
+    tiles: manifest.tiles || [],
+    shardSize: manifest.shard_size || stops.length || 1,
+    tilePromises: new Map(),
+  };
+}
+
+async function loadStaticManifest() {
+  const response = await fetch(STATIC_MANIFEST_URL);
+  if (!response.ok) {
+    return null;
+  }
+  return response.json();
+}
+
 async function loadStaticNetwork() {
   if (!USE_STATIC_DATA) {
     return null;
   }
-  const response = await fetch(STATIC_DATA_URL);
-  if (!response.ok) {
-    throw new Error(`Static network data unavailable: ${response.status}`);
+  const manifest = await loadStaticManifest();
+  if (manifest && manifest.v === 2) {
+    const searchIndex = await fetchJson(staticDataUrl(manifest.search_index || "search-index.json"));
+    const network = prepareStaticV2Network(manifest, searchIndex);
+    map.setView(network.defaultCenter, 8);
+    setStatus(`Static ${manifest.region || "network"} ready: ${network.stops.length} stops.`, "success");
+    return network;
   }
-  const network = prepareStaticNetwork(await response.json());
+
+  const network = prepareStaticNetwork(await fetchJson(STATIC_LEGACY_DATA_URL));
   map.setView(network.defaultCenter, 12);
   setStatus(`Static network ready: ${network.stops.length} stops.`, "success");
   return network;
@@ -394,7 +455,37 @@ function pushStaticBest(heap, best, stopIndex, elapsedSec, maxTravelSec) {
   }
 }
 
-function computeStaticReachability(network, originLat, originLon, minutes) {
+async function loadStaticTile(network, stopIndex) {
+  if (network.version !== 2) {
+    return null;
+  }
+  const tileIndex = Math.floor(stopIndex / network.shardSize);
+  const tile = network.tiles[tileIndex];
+  if (!tile) {
+    throw new Error(`Static network tile missing for stop ${stopIndex}`);
+  }
+  if (!network.tilePromises.has(tileIndex)) {
+    network.tilePromises.set(tileIndex, fetchJson(staticDataUrl(tile.path)));
+  }
+  return network.tilePromises.get(tileIndex);
+}
+
+async function staticEdgesForStop(network, stopIndex) {
+  if (network.version !== 2) {
+    return {
+      rideEdges: network.rideEdges[stopIndex] || [],
+      walkEdges: network.walkEdges[stopIndex] || [],
+    };
+  }
+  const tile = await loadStaticTile(network, stopIndex);
+  const row = (tile.rows || [])[stopIndex - tile.start] || [[], []];
+  return {
+    rideEdges: row[0] || [],
+    walkEdges: row[1] || [],
+  };
+}
+
+async function computeStaticReachability(network, originLat, originLon, minutes) {
   const maxTravelSec = minutes * 60;
   const best = new Array(network.stops.length).fill(Number.POSITIVE_INFINITY);
   const heap = [];
@@ -409,10 +500,11 @@ function computeStaticReachability(network, originLat, originLon, minutes) {
     if (elapsedSec > best[stopIndex]) {
       continue;
     }
-    (network.walkEdges[stopIndex] || []).forEach(([nextStopIndex, distM]) => {
+    const edges = await staticEdgesForStop(network, stopIndex);
+    edges.walkEdges.forEach(([nextStopIndex, distM]) => {
       pushStaticBest(heap, best, nextStopIndex, elapsedSec + distM / network.constants.walk_mps, maxTravelSec);
     });
-    (network.rideEdges[stopIndex] || []).forEach(([nextStopIndex, travelSec]) => {
+    edges.rideEdges.forEach(([nextStopIndex, travelSec]) => {
       pushStaticBest(heap, best, nextStopIndex, elapsedSec + travelSec, maxTravelSec);
     });
   }
@@ -475,7 +567,8 @@ async function fetchHeatmap() {
 
   const network = await staticNetwork();
   if (network) {
-    const best = computeStaticReachability(
+    setStatus("Computing static network reach...", "loading");
+    const best = await computeStaticReachability(
       network,
       selectedOrigin.lat,
       selectedOrigin.lon,
@@ -578,6 +671,9 @@ window.__transitHeatMapInternals = {
   API_BASE,
   USE_STATIC_DATA,
   prepareStaticNetwork,
+  prepareStaticV2Network,
+  loadStaticManifest,
+  loadStaticTile,
   searchStaticStops,
   computeStaticReachability,
   buildStaticHeatmapPoints,

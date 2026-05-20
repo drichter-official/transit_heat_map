@@ -33,6 +33,16 @@ python -m backend.setup_data --region london --source-url "https://example.test/
 You can also set `TRANSIT_HEATMAP_LONDON_GTFS_URL` and omit `--source-url`.
 TfL's live timetable feeds require portal access, and the public Journey Planner example ZIP is TransXChange XML rather than GTFS, so this backend expects a GTFS-converted London schedule feed.
 
+## Export Static GitHub Pages Data
+
+After preparing the Swiss feed, generate the static sharded browser network:
+
+```powershell
+python -m backend.export_static_network --region switzerland
+```
+
+This writes `static-data/manifest.json`, `static-data/search-index.json`, and `static-data/tiles/*.json`. The frontend loads the manifest and search index first, then graph tiles on demand, which keeps the initial GitHub Pages payload smaller than a single monolithic network file.
+
 ## Run Tests
 
 ```powershell

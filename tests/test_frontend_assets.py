@@ -7,7 +7,7 @@ def test_frontend_uses_leaflet_and_not_google_maps():
     assert "leaflet" in html.lower()
     assert "leaflet-heat" not in html.lower()
     assert "maps.googleapis.com" not in html
-    assert "app.js?v=connection-window-reach" in html
+    assert "app.js?v=static-network-v2" in html
 
 
 def test_frontend_polling_and_status_contracts_exist():
@@ -72,3 +72,14 @@ def test_frontend_keeps_distant_reachable_points_visible_at_country_zoom():
     assert "geographicRadiusPx" in js
     assert "MIN_RENDER_RADIUS_PX * RENDER_SCALE" in js
     assert "Math.max(geographicRadiusPx" in js
+
+
+def test_frontend_loads_sharded_static_v2_network():
+    js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+    assert "STATIC_MANIFEST_URL" in js
+    assert "manifest.json" in js
+    assert "search-index.json" in js
+    assert "prepareStaticV2Network" in js
+    assert "loadStaticTile" in js
+    assert "tilePromises" in js
