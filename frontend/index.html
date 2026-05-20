@@ -4,25 +4,107 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Transit Heatmap</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230875df'/%3E%3Cpath fill='white' d='M7 4.5h10c1 0 1.8.8 1.8 1.8v9.2c0 1-.8 1.8-1.8 1.8l.9 1.7h-1.8l-.7-1.3H8.6L7.9 19H6.1l.9-1.7c-1 0-1.8-.8-1.8-1.8V6.3c0-1 .8-1.8 1.8-1.8Zm.7 2.6v3.4h8.6V7.1H7.7Zm1.1 8a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Zm6.4 0a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4Z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <aside id="controls" aria-label="Transit heatmap controls">
-    <h1>Transit Reach</h1>
-    <label for="stop-search">Station or stop</label>
-    <input id="stop-search" type="text" aria-label="Station or stop" autocomplete="off">
-    <ul id="stop-suggestions"></ul>
+  <header class="app-bar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M6.8 3.5h10.4c1.15 0 2.1.95 2.1 2.1v9.8c0 1.15-.95 2.1-2.1 2.1l1.2 2.1h-2.1l-.95-1.7h-6.7l-.95 1.7H5.6l1.2-2.1c-1.15 0-2.1-.95-2.1-2.1V5.6c0-1.15.95-2.1 2.1-2.1Zm.35 3.2v3.65h9.7V6.7h-9.7Zm1.2 8.55a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Zm7.3 0a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"/>
+        </svg>
+      </span>
+      <h1>Transit Reach</h1>
+    </div>
+  </header>
 
-    <label for="time-slider">Within <span id="time-label">30</span> min</label>
-    <input id="time-slider" type="range" min="5" max="120" step="5" value="30">
+  <div class="map-shell">
+    <aside id="controls" aria-label="Transit heatmap controls">
+      <div class="field-shell search-shell">
+        <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="m20 20-4.2-4.2m1.25-5.05a6.3 6.3 0 1 1-12.6 0 6.3 6.3 0 0 1 12.6 0Z"/>
+        </svg>
+        <label class="sr-only" for="stop-search">Station or stop</label>
+        <input id="stop-search" type="text" aria-label="Station or stop" autocomplete="off" placeholder="Station or stop">
+      </div>
+      <ul id="stop-suggestions"></ul>
 
-    <button id="go-btn" type="button">Show Reach</button>
-    <div id="status" role="status"></div>
-  </aside>
-  <main id="map" aria-label="Reachability map"></main>
+      <div class="field-shell range-shell">
+        <div class="range-heading">
+          <svg class="field-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 7v5l3.4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+          </svg>
+          <label for="time-slider">Within <span id="time-label">30</span> min</label>
+        </div>
+        <input id="time-slider" type="range" min="5" max="120" step="5" value="30">
+      </div>
+
+      <button id="go-btn" type="button">
+        <span>Show Reach</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M5 12h13m-5-6 6 6-6 6"/>
+        </svg>
+      </button>
+
+      <div class="status-card" data-mode="neutral">
+        <span class="status-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="m5 12 4 4L19 6"/>
+          </svg>
+        </span>
+        <div id="status" role="status"></div>
+      </div>
+    </aside>
+
+    <main id="map" aria-label="Reachability map"></main>
+
+    <section class="legend-panel" aria-label="Reach intensity legend">
+      <h2>Reach intensity</h2>
+      <div class="legend-ramp" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="legend-labels" aria-hidden="true">
+        <span>Low</span>
+        <span>High</span>
+      </div>
+    </section>
+
+    <div class="map-tools" aria-label="Map display controls">
+      <button id="layer-toggle" class="tool-btn" type="button" aria-expanded="false" aria-controls="layer-menu" aria-label="Map layers">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="m4 7.5 8-3 8 3v10l-8 3-8-3v-10Z"/>
+          <path d="M12 4.5v16M4 7.5l8 3 8-3"/>
+        </svg>
+      </button>
+
+      <div id="layer-menu" class="layer-menu" hidden>
+        <button class="layer-option" type="button" data-layer="standard" aria-pressed="true">
+          <span class="layer-thumb standard-thumb" aria-hidden="true"></span>
+          <span>Standard</span>
+        </button>
+        <button class="layer-option" type="button" data-layer="hybrid" aria-pressed="false">
+          <span class="layer-thumb hybrid-thumb" aria-hidden="true"></span>
+          <span>Hybrid</span>
+        </button>
+        <button class="layer-option" type="button" data-layer="satellite" aria-pressed="false">
+          <span class="layer-thumb satellite-thumb" aria-hidden="true"></span>
+          <span>Satellite</span>
+        </button>
+        <button id="transit-lines-toggle" class="overlay-option" type="button" aria-pressed="true">
+          <span class="overlay-check" aria-hidden="true"></span>
+          <span>Transit lines</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js?v=static-network-v2"></script>
+  <script src="app.js?v=static-network-lines"></script>
 </body>
 </html>

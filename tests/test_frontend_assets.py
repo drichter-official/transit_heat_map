@@ -7,7 +7,7 @@ def test_frontend_uses_leaflet_and_not_google_maps():
     assert "leaflet" in html.lower()
     assert "leaflet-heat" not in html.lower()
     assert "maps.googleapis.com" not in html
-    assert "app.js?v=static-network-v2" in html
+    assert "app.js?v=static-network-lines" in html
 
 
 def test_frontend_polling_and_status_contracts_exist():

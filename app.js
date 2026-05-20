@@ -12,13 +12,46 @@ const API_BASE = API_BASE_RAW.replace(/\/$/, "");
 const STATIC_DATA_BASE = "static-data/";
 const STATIC_MANIFEST_URL = `${STATIC_DATA_BASE}manifest.json`;
 const STATIC_LEGACY_DATA_URL = `${STATIC_DATA_BASE}transit-network.json`;
+const ZURICH_CENTER = [47.376, 8.541];
+const CARTO_ATTRIBUTION = "&copy; OpenStreetMap contributors &copy; CARTO";
+const ESRI_ATTRIBUTION = "Tiles &copy; Esri";
+const BASE_LAYERS = {
+  standard: [
+    {
+      url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      options: { maxZoom: 19, attribution: CARTO_ATTRIBUTION },
+    },
+  ],
+  hybrid: [
+    {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      options: { maxZoom: 19, attribution: ESRI_ATTRIBUTION },
+    },
+    {
+      url: "https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+      options: { maxZoom: 19, attribution: CARTO_ATTRIBUTION, pane: "tilePane" },
+    },
+  ],
+  satellite: [
+    {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      options: { maxZoom: 19, attribution: ESRI_ATTRIBUTION },
+    },
+  ],
+};
+const TRANSIT_LINE_COLORS = ["#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#111827"];
 
 let map;
 let heatLayer;
 let marker;
+let tileLayers = [];
+let transitLineLayer;
 let selectedOrigin = null;
 let activePollTimer = null;
 let staticNetworkPromise = null;
+let activeNetwork = null;
+let activeBaseLayer = "standard";
+let transitLinesVisible = true;
 
 const searchInput = document.getElementById("stop-search");
 const suggestions = document.getElementById("stop-suggestions");
@@ -26,6 +59,11 @@ const timeSlider = document.getElementById("time-slider");
 const timeLabel = document.getElementById("time-label");
 const goButton = document.getElementById("go-btn");
 const statusEl = document.getElementById("status");
+const statusCard = document.querySelector(".status-card");
+const layerToggle = document.getElementById("layer-toggle");
+const layerMenu = document.getElementById("layer-menu");
+const layerOptions = document.querySelectorAll(".layer-option");
+const transitLinesToggle = document.getElementById("transit-lines-toggle");
 
 const OVERLAY_OPACITY = "0.48";
 const RENDER_SCALE = 0.45;
@@ -39,12 +77,35 @@ const HEAT_STOPS = [
   { weight: 1, color: "#ef4444" },
 ];
 
+function setBaseLayer(layerName = activeBaseLayer) {
+  activeBaseLayer = BASE_LAYERS[layerName] ? layerName : "standard";
+  tileLayers.forEach((layer) => layer.remove());
+  tileLayers = BASE_LAYERS[activeBaseLayer].map((definition) => (
+    L.tileLayer(definition.url, definition.options).addTo(map)
+  ));
+  layerOptions.forEach((option) => {
+    option.setAttribute("aria-pressed", String(option.dataset.layer === activeBaseLayer));
+  });
+}
+
+function setLayerMenuOpen(isOpen) {
+  layerMenu.hidden = !isOpen;
+  layerToggle.setAttribute("aria-expanded", String(isOpen));
+}
+
+function originIcon() {
+  return L.divIcon({
+    className: "origin-marker",
+    html: '<span class="origin-pin"></span>',
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
 function initMap() {
-  map = L.map("map").setView([47.376, 8.541], 12);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors",
-  }).addTo(map);
+  map = L.map("map", { zoomControl: false }).setView(ZURICH_CENTER, 12);
+  L.control.zoom({ position: "topright" }).addTo(map);
+  setBaseLayer();
 
   map.on("click", (event) => {
     setOrigin(event.latlng.lat, event.latlng.lng, "Custom location");
@@ -54,6 +115,9 @@ function initMap() {
 function setStatus(message, mode = "neutral") {
   statusEl.textContent = message;
   statusEl.dataset.mode = mode;
+  if (statusCard) {
+    statusCard.dataset.mode = mode;
+  }
 }
 
 function setOrigin(lat, lon, name) {
@@ -61,7 +125,7 @@ function setOrigin(lat, lon, name) {
   if (marker) {
     marker.remove();
   }
-  marker = L.marker([lat, lon]).addTo(map).bindPopup(name);
+  marker = L.marker([lat, lon], { icon: originIcon() }).addTo(map).bindPopup(name);
   map.panTo([lat, lon]);
 }
 
@@ -130,6 +194,138 @@ function boundsForPoints(points) {
   return bounds;
 }
 
+function colorForTransitSegment(fromStop, toStop, fromIndex, toIndex) {
+  const angle = Math.atan2(toStop.lat - fromStop.lat, toStop.lon - fromStop.lon);
+  const normalized = (angle + Math.PI) / (Math.PI * 2);
+  const colorIndex = Math.floor(normalized * TRANSIT_LINE_COLORS.length + Math.abs(fromIndex - toIndex)) % TRANSIT_LINE_COLORS.length;
+  return TRANSIT_LINE_COLORS[colorIndex];
+}
+
+function transitLineStyleForZoom(zoom) {
+  if (zoom < 12) {
+    return null;
+  }
+  if (zoom < 13) {
+    return { alpha: 0.28, maxDistanceM: 1800, width: 0.85 };
+  }
+  if (zoom < 14) {
+    return { alpha: 0.46, maxDistanceM: 3200, width: 1.15 };
+  }
+  return { alpha: 0.64, maxDistanceM: 5200, width: 1.5 };
+}
+
+function buildTransitLineSegments(stops, rideEdges) {
+  const seen = new Set();
+  const segments = [];
+  rideEdges.forEach((edges, fromIndex) => {
+    const fromStop = stops[fromIndex];
+    if (!fromStop || !edges) {
+      return;
+    }
+    edges.forEach(([toIndex]) => {
+      const toStop = stops[toIndex];
+      if (!toStop) {
+        return;
+      }
+      const key = fromIndex < toIndex ? `${fromIndex}:${toIndex}` : `${toIndex}:${fromIndex}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      segments.push({
+        fromLat: fromStop.lat,
+        fromLng: fromStop.lon,
+        toLat: toStop.lat,
+        toLng: toStop.lon,
+        distanceM: distanceMeters(fromStop.lat, fromStop.lon, toStop.lat, toStop.lon),
+        color: colorForTransitSegment(fromStop, toStop, fromIndex, toIndex),
+      });
+    });
+  });
+  return segments;
+}
+
+function createTransitLineLayer(segments) {
+  const TransitLineCanvasLayer = L.Layer.extend({
+    onAdd(layerMap) {
+      this._map = layerMap;
+      this._canvas = L.DomUtil.create("canvas", "transit-line-canvas");
+      this._canvas.style.opacity = "0.88";
+      this._canvas.style.zIndex = "430";
+      this._ctx = this._canvas.getContext("2d");
+      layerMap.getPanes().overlayPane.appendChild(this._canvas);
+      layerMap.on("moveend zoomend resize", this._reset, this);
+      this._reset();
+    },
+    onRemove(layerMap) {
+      layerMap.off("moveend zoomend resize", this._reset, this);
+      L.DomUtil.remove(this._canvas);
+    },
+    _reset() {
+      const size = this._map.getSize();
+      const topLeft = this._map.containerPointToLayerPoint([0, 0]);
+      this._topLeft = topLeft;
+      L.DomUtil.setPosition(this._canvas, topLeft);
+      this._canvas.width = Math.max(1, Math.ceil(size.x));
+      this._canvas.height = Math.max(1, Math.ceil(size.y));
+      this._canvas.style.width = `${size.x}px`;
+      this._canvas.style.height = `${size.y}px`;
+      this._draw();
+    },
+    _draw() {
+      if (!this._ctx) {
+        return;
+      }
+      const ctx = this._ctx;
+      const width = this._canvas.width;
+      const height = this._canvas.height;
+      const style = transitLineStyleForZoom(this._map.getZoom());
+      ctx.clearRect(0, 0, width, height);
+      if (!style) {
+        return;
+      }
+      ctx.globalAlpha = style.alpha;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = style.width;
+      segments.forEach((segment) => {
+        if (segment.distanceM > style.maxDistanceM) {
+          return;
+        }
+        const from = this._map.latLngToLayerPoint([segment.fromLat, segment.fromLng]).subtract(this._topLeft);
+        const to = this._map.latLngToLayerPoint([segment.toLat, segment.toLng]).subtract(this._topLeft);
+        const margin = 80;
+        if (
+          (from.x < -margin && to.x < -margin) ||
+          (from.y < -margin && to.y < -margin) ||
+          (from.x > width + margin && to.x > width + margin) ||
+          (from.y > height + margin && to.y > height + margin)
+        ) {
+          return;
+        }
+        ctx.strokeStyle = segment.color;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+      });
+    },
+  });
+
+  return new TransitLineCanvasLayer();
+}
+
+function setTransitLineLayer() {
+  if (transitLineLayer) {
+    transitLineLayer.remove();
+    transitLineLayer = null;
+  }
+  if (activeNetwork?.lineSegments?.length && transitLinesVisible) {
+    transitLineLayer = createTransitLineLayer(activeNetwork.lineSegments).addTo(map);
+  }
+  transitLinesToggle.setAttribute("aria-pressed", String(transitLinesVisible));
+}
+
 function createReachabilityLayer(points) {
   const ReachabilityCanvasLayer = L.Layer.extend({
     onAdd(layerMap) {
@@ -137,6 +333,7 @@ function createReachabilityLayer(points) {
       this._canvas = L.DomUtil.create("canvas", "reachability-canvas");
       this._canvas.style.opacity = OVERLAY_OPACITY;
       this._canvas.style.pointerEvents = "none";
+      this._canvas.style.zIndex = "420";
       this._ctx = this._canvas.getContext("2d");
       layerMap.getPanes().overlayPane.appendChild(this._canvas);
       layerMap.on("moveend zoomend resize", this._reset, this);
@@ -231,7 +428,10 @@ function renderHeatmap(points) {
   heatLayer = createReachabilityLayer(points).addTo(map);
 
   if (points.length > 0) {
-    map.fitBounds(heatLayer.getBounds(), { padding: [30, 30], maxZoom: 13 });
+    const isCompact = window.matchMedia("(max-width: 720px)").matches;
+    map.fitBounds(heatLayer.getBounds(), isCompact
+      ? { padding: [28, 28], maxZoom: 13 }
+      : { paddingTopLeft: [410, 120], paddingBottomRight: [88, 120], maxZoom: 13 });
   }
   requestAnimationFrame(() => map.invalidateSize());
 }
@@ -255,11 +455,12 @@ function prepareStaticNetwork(payload) {
   return {
     version: 1,
     constants,
-    defaultCenter: payload.default_center || [47.376, 8.541],
+    defaultCenter: payload.default_center || ZURICH_CENTER,
     stops,
     grid: payload.grid || {},
     rideEdges: payload.ride_edges || [],
     walkEdges: payload.walk_edges || [],
+    lineSegments: buildTransitLineSegments(stops, payload.ride_edges || []),
   };
 }
 
@@ -305,6 +506,8 @@ function prepareStaticV2Network(manifest, searchIndex) {
     tiles: manifest.tiles || [],
     shardSize: manifest.shard_size || stops.length || 1,
     tilePromises: new Map(),
+    lineSegments: [],
+    lineSegmentsPromise: null,
   };
 }
 
@@ -324,13 +527,17 @@ async function loadStaticNetwork() {
   if (manifest && manifest.v === 2) {
     const searchIndex = await fetchJson(staticDataUrl(manifest.search_index || "search-index.json"));
     const network = prepareStaticV2Network(manifest, searchIndex);
-    map.setView(network.defaultCenter, 8);
+    activeNetwork = network;
+    map.setView(ZURICH_CENTER, 13);
     setStatus(`Static ${manifest.region || "network"} ready: ${network.stops.length} stops.`, "success");
+    loadTransitLineSegments(network);
     return network;
   }
 
   const network = prepareStaticNetwork(await fetchJson(STATIC_LEGACY_DATA_URL));
-  map.setView(network.defaultCenter, 12);
+  activeNetwork = network;
+  map.setView(ZURICH_CENTER, 13);
+  setTransitLineLayer();
   setStatus(`Static network ready: ${network.stops.length} stops.`, "success");
   return network;
 }
@@ -469,6 +676,36 @@ async function loadStaticTile(network, stopIndex) {
     network.tilePromises.set(tileIndex, fetchJson(staticDataUrl(tile.path)));
   }
   return network.tilePromises.get(tileIndex);
+}
+
+async function buildV2TransitLineSegments(network) {
+  const rideEdges = Array.from({ length: network.stops.length }, () => []);
+  const tiles = await Promise.all(
+    network.tiles.map((tile) => loadStaticTile(network, tile.start)),
+  );
+  tiles.forEach((tile) => {
+    (tile.rows || []).forEach((row, offset) => {
+      rideEdges[tile.start + offset] = row[0] || [];
+    });
+  });
+  return buildTransitLineSegments(network.stops, rideEdges);
+}
+
+async function loadTransitLineSegments(network) {
+  if (network.lineSegments?.length) {
+    setTransitLineLayer();
+    return;
+  }
+  if (!network.lineSegmentsPromise) {
+    network.lineSegmentsPromise = buildV2TransitLineSegments(network)
+      .then((segments) => {
+        network.lineSegments = segments;
+        return segments;
+      })
+      .catch(() => []);
+  }
+  await network.lineSegmentsPromise;
+  setTransitLineLayer();
 }
 
 async function staticEdgesForStop(network, stopIndex) {
@@ -665,6 +902,28 @@ goButton.addEventListener("click", async () => {
     await fetchHeatmap();
   } catch (error) {
     setStatus(error.message, "error");
+  }
+});
+
+layerToggle.addEventListener("click", () => {
+  setLayerMenuOpen(layerMenu.hidden);
+});
+
+layerOptions.forEach((option) => {
+  option.addEventListener("click", () => {
+    setBaseLayer(option.dataset.layer);
+    setLayerMenuOpen(false);
+  });
+});
+
+transitLinesToggle.addEventListener("click", () => {
+  transitLinesVisible = !transitLinesVisible;
+  setTransitLineLayer();
+});
+
+document.addEventListener("click", (event) => {
+  if (!layerMenu.hidden && !event.target.closest(".map-tools")) {
+    setLayerMenuOpen(false);
   }
 });
 
