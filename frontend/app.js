@@ -30,6 +30,7 @@ const statusEl = document.getElementById("status");
 const OVERLAY_OPACITY = "0.48";
 const RENDER_SCALE = 0.45;
 const MIN_RENDER_RADIUS_PX = 7;
+const STATIC_HEATMAP_POINT_LIMIT = 30000;
 const HEAT_STOPS = [
   { weight: 0, color: "#2563eb" },
   { weight: 0.25, color: "#16a34a" },
@@ -537,7 +538,7 @@ function buildStaticHeatmapPoints(network, best, minutes) {
       });
     });
 
-  return points.slice(0, 5000);
+  return points.slice(0, STATIC_HEATMAP_POINT_LIMIT);
 }
 
 async function searchStops(query) {
